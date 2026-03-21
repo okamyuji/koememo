@@ -25,12 +25,21 @@ class _KoememoAppState extends ConsumerState<KoememoApp>
     super.dispose();
   }
 
+  bool _wasInBackground = false;
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      // TODO: 録音中かどうかを RecordingController から確認し、
-      // 録音中でなければ認証をロックする
-      ref.read(authStateProvider.notifier).lock();
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      _wasInBackground = true;
+    } else if (state == AppLifecycleState.resumed && _wasInBackground) {
+      _wasInBackground = false;
+      final isAuthenticated = ref.read(authStateProvider);
+      if (isAuthenticated) {
+        // 認証済み状態からバックグラウンド復帰した場合のみロック
+        // （未認証=認証画面表示中はロックしない→無限ループ防止）
+        ref.read(authStateProvider.notifier).lock();
+      }
     }
   }
 
