@@ -3,9 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:koememo/core/auth_lifecycle.dart';
 import 'package:koememo/core/router.dart';
 import 'package:koememo/core/theme.dart';
-import 'package:koememo/features/recording/recording_controller.dart';
 import 'package:koememo/features/settings/settings_controller.dart';
-import 'package:koememo/models/recording_state.dart';
 
 class KoememoApp extends ConsumerStatefulWidget {
   const KoememoApp({super.key});
@@ -23,10 +21,7 @@ class _KoememoAppState extends ConsumerState<KoememoApp>
     super.initState();
     _lifecycleManager = AuthLifecycleManager(
       onLock: () => ref.read(authStateProvider.notifier).lock(),
-      isRecording: () {
-        final state = ref.read(recordingControllerProvider);
-        return state is Recording;
-      },
+      isRecording: () => ref.read(recordingActiveProvider),
     );
     WidgetsBinding.instance.addObserver(this);
   }

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:koememo/core/router.dart';
 import 'package:koememo/database/daos/memo_dao.dart';
 import 'package:koememo/features/memo_list/memo_list_controller.dart';
 import 'package:koememo/models/memo_result.dart';
@@ -47,12 +48,13 @@ class RecordingController extends _$RecordingController {
       throw Exception('マイクのアクセス許可が必要です');
     }
 
-    // まず録音を開始（UIが即座に反応するように）
+    // 録音を開始
     _recordingStartTime = DateTime.now();
     final filePath = await _recordingService!.startRecording();
     state = RecordingState.recording(filePath: filePath);
+    ref.read(recordingActiveProvider.notifier).start();
 
-    // 音声認識の初期化（録音開始後に非同期で。モデル未配置の場合はスキップ）
+    // 音声認識の初期化（録音開始後に非同期で）
     try {
       _speechService = SpeechRecognitionService();
       await _speechService!.initialize();
@@ -65,8 +67,10 @@ class RecordingController extends _$RecordingController {
       _recordingService!.onAudioData = (samples) {
         _speechService?.acceptWaveform(samples);
       };
-    } catch (e) {
-      debugPrint('Speech recognition init failed (recording only): $e');
+    } catch (e, stack) {
+      debugPrint('Speech recognition init failed: $e');
+      debugPrint('Stack: $stack');
+      ref.read(liveTranscriptProvider.notifier).update('[文字起こし初期化エラー] $e');
       _speechService?.dispose();
       _speechService = null;
     }
@@ -106,8 +110,8 @@ class RecordingController extends _$RecordingController {
 
     _cleanup();
     state = const RecordingState.idle();
+    ref.read(recordingActiveProvider.notifier).stop();
 
-    // メモ一覧を更新
     ref.invalidate(memoListProvider);
     ref.invalidate(tagListProvider);
 
@@ -121,6 +125,7 @@ class RecordingController extends _$RecordingController {
   void cancelRecording() {
     _cleanup();
     state = const RecordingState.idle();
+    ref.read(recordingActiveProvider.notifier).stop();
   }
 
   void _cleanup() {

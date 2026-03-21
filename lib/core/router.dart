@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:koememo/features/auth/auth_screen.dart';
@@ -8,8 +7,6 @@ import 'package:koememo/features/recording/recording_screen.dart';
 import 'package:koememo/features/memo_detail/memo_detail_screen.dart';
 import 'package:koememo/features/memo_edit/memo_edit_screen.dart';
 import 'package:koememo/features/settings/settings_screen.dart';
-import 'package:koememo/features/recording/recording_controller.dart';
-import 'package:koememo/models/recording_state.dart';
 
 part 'router.g.dart';
 
@@ -22,36 +19,37 @@ class AuthState extends _$AuthState {
   void lock() => state = false;
 }
 
-/// GoRouter の redirect を再評価させるための Listenable
-class RouterRefreshNotifier extends ChangeNotifier {
-  void notify() => notifyListeners();
+/// 録音中フラグ（認証スキップ判定用）
+/// AuthLifecycleManager と GoRouter redirect の両方から参照される
+@Riverpod(keepAlive: true)
+class RecordingActive extends _$RecordingActive {
+  @override
+  bool build() => false;
+
+  void start() => state = true;
+  void stop() => state = false;
 }
 
-final routerRefreshProvider = Provider<RouterRefreshNotifier>((ref) {
-  final notifier = RouterRefreshNotifier();
+@Riverpod(keepAlive: true)
+Raw<GoRouter> router(Ref ref) {
+  final notifier = ValueNotifier(0);
 
-  // authState が変わったら GoRouter を再評価
-  ref.listen(authStateProvider, (_, _) => notifier.notify());
-
-  return notifier;
-});
-
-final routerProvider = Provider<GoRouter>((ref) {
-  final refreshNotifier = ref.watch(routerRefreshProvider);
+  ref.listen(authStateProvider, (_, _) {
+    notifier.value++;
+  });
+  ref.listen(recordingActiveProvider, (_, _) {
+    notifier.value++;
+  });
 
   return GoRouter(
     initialLocation: '/auth',
-    refreshListenable: refreshNotifier,
+    refreshListenable: notifier,
     redirect: (context, state) {
-      // redirect 時に最新の状態を read（watch ではない）
       final isAuthenticated = ref.read(authStateProvider);
-      final recordingState = ref.read(recordingControllerProvider);
-      final isRecording = recordingState is Recording;
+      final isRecording = ref.read(recordingActiveProvider);
       final isAuthRoute = state.matchedLocation == '/auth';
 
-      // 録音中は認証をバイパス
       if (isRecording && isAuthRoute) return '/recording';
-
       if (!isAuthenticated && !isRecording && !isAuthRoute) return '/auth';
       if (isAuthenticated && isAuthRoute) return '/';
       return null;
@@ -85,4 +83,4 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
     ],
   );
-});
+}

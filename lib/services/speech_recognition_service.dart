@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:koememo/core/constants.dart';
 import 'package:koememo/services/model_manager.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
@@ -29,7 +29,9 @@ class SpeechRecognitionService {
   Future<void> initialize() async {
     if (_isInitialized) return;
 
+    debugPrint('SpeechRecognitionService: initializing...');
     final modelDir = await ModelManager.ensureModelReady();
+    debugPrint('SpeechRecognitionService: modelDir=$modelDir');
 
     final recognizerConfig = sherpa.OfflineRecognizerConfig(
       model: sherpa.OfflineModelConfig(
@@ -43,7 +45,9 @@ class SpeechRecognitionService {
         debug: false,
       ),
     );
+    debugPrint('SpeechRecognitionService: creating OfflineRecognizer...');
     _recognizer = sherpa.OfflineRecognizer(recognizerConfig);
+    debugPrint('SpeechRecognitionService: OfflineRecognizer created');
 
     final vadConfig = sherpa.VadModelConfig(
       sileroVad: sherpa.SileroVadModelConfig(
@@ -57,10 +61,12 @@ class SpeechRecognitionService {
       numThreads: 1,
       debug: false,
     );
+    debugPrint('SpeechRecognitionService: creating VoiceActivityDetector...');
     _vad = sherpa.VoiceActivityDetector(
       config: vadConfig,
       bufferSizeInSeconds: 60,
     );
+    debugPrint('SpeechRecognitionService: initialized successfully');
 
     _isInitialized = true;
   }
