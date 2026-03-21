@@ -82,13 +82,15 @@ fvm flutter build apk                        # Android ビルド成功
 
 | パッケージ | 用途 |
 |-----------|------|
-| riverpod_generator | Riverpod コード生成 |
-| build_runner | コード生成実行 |
-| drift_dev | drift コード生成 |
-| freezed | freezed コード生成 |
-| json_serializable | JSON コード生成 |
+| riverpod_generator ^4.0.3 | Riverpod コード生成 |
+| build_runner ^2.4.14 | コード生成実行 |
+| drift_dev ^2.31.0 | drift コード生成 |
+| freezed ^3.2.5 | freezed コード生成 |
+| json_serializable ^6.9.4 | JSON コード生成 |
 | flutter_test | テストフレームワーク |
-| flutter_lints | lint ルール |
+| flutter_lints ^6.0.0 | lint ルール |
+| riverpod_lint ^3.0.0 | Riverpod lint ルール |
+| mockito ^5.4.5 | テスト用モック生成 |
 
 ---
 
@@ -109,7 +111,12 @@ fvm flutter build apk                        # Android ビルド成功
 
 - GoRouter `redirect` で認証状態判定 → 未認証なら `/auth` にリダイレクト
 - `WidgetsBindingObserver.didChangeAppLifecycleState` でバックグラウンド復帰検知
-- **録音中は認証スキップ**: GoRouter redirect 内で `RecordingController` の状態を参照し、録音中なら認証をバイパス（AuthState に録音フラグを持たせず、状態の二重管理を避ける）
+- 認証ライフサイクルは **GoF State パターン**で管理（`lib/core/auth_lifecycle.dart`）
+  - `UnauthenticatedState` → `AuthenticatedForegroundState` → `AuthenticatedBackgroundState`
+  - `paused` のみバックグラウンド遷移（`inactive` は Face ID ダイアログ等のため無視）
+- **録音中は認証スキップ**: `RecordingActive` boolean provider を router と auth_lifecycle の両方から参照
+- GoRouter provider は手書き `Provider<GoRouter>` を使用（`@Riverpod` だと起動時クラッシュ）
+- `app.dart` の `ref.listen` で authState/recordingActive 変更時に `goRouter.refresh()` で redirect 再評価
 - 録音停止後の復帰時は通常通り認証要求
 
 ### バックグラウンド録音
@@ -192,60 +199,67 @@ lib/services/
 
 ## 6. 状態管理（Riverpod 3 Provider 構成）
 
+**注意:** 一部の provider は drift 型との互換性やパフォーマンス上の理由から手書き。
+
 ```dart
 // === core providers ===
-@riverpod AppDatabase database(Ref ref)
-@riverpod AuthService authService(Ref ref)
+// database: 手書き Provider（drift_flutter の driftDatabase() 使用）
+final appDatabaseProvider = Provider<AppDatabase>(...);
+// auth: 手書き Provider
+final authServiceProvider = Provider<AuthService>(...);
 
-// === 認証状態 ===
-@riverpod
+// === 認証・録音状態 (@Riverpod, keepAlive: true) ===
+@Riverpod(keepAlive: true)
 class AuthState extends _$AuthState {
-  bool build() => false;  // 認証済みかどうか
+  bool build() => false;
   void authenticate() => state = true;
   void lock() => state = false;
-  // 録音中の認証スキップ判定は GoRouter redirect 内で
-  // RecordingController の状態を参照して行う（状態の二重管理を避ける）
 }
 
-// === メモ一覧 ===
-@riverpod Future<List<Memo>> memoList(Ref ref, {String? searchQuery, int? tagId})
-@riverpod Future<List<Tag>> tagList(Ref ref)
+@Riverpod(keepAlive: true)
+class RecordingActive extends _$RecordingActive {
+  bool build() => false;
+  void start() => state = true;
+  void stop() => state = false;
+}
 
-// === 録音 ===
+// === GoRouter（手書き Provider、@Riverpod ではない）===
+final routerProvider = Provider<GoRouter>((ref) {
+  // ref.read で authState/recordingActive を参照
+  // app.dart の ref.listen + goRouter.refresh() で redirect 再評価
+});
+
+// === メモ一覧（手書き FutureProvider.family）===
+// drift 生成型が riverpod_generator と非互換のため手書き
+final memoListProvider = FutureProvider.family<List<Memo>, ({String? searchQuery, int? tagId})>(...);
+final tagListProvider = FutureProvider<List<Tag>>(...);
+
+// === 録音 (@riverpod) ===
 @riverpod
 class RecordingController extends _$RecordingController {
-  // build() → RecordingState (idle / recording / processing)
-  Future<void> startRecording();
-  Future<MemoResult> stopRecording();
-  Stream<String> get liveTranscript;
+  // build() → RecordingState (idle / initializing / recording / processing)
+  Future<void> startRecording();  // 初期化 → 録音開始の順
+  Future<MemoResult?> stopRecording();
+  void cancelRecording();
 }
+// リアルタイム文字起こし（手書き NotifierProvider）
+final liveTranscriptProvider = NotifierProvider<LiveTranscriptNotifier, String>(...);
 
-// === メモ詳細 ===
-@riverpod Future<Memo> memoDetail(Ref ref, int memoId)
-@riverpod Future<List<Tag>> memoTags(Ref ref, int memoId)
+// === メモ詳細（手書き FutureProvider.family）===
+final memoDetailProvider = FutureProvider.family<Memo, int>(...);
+final memoTagsProvider = FutureProvider.family<List<Tag>, int>(...);
 
-// === メモ編集 ===
+// === メモ編集 (@riverpod) ===
 @riverpod
 class MemoEditor extends _$MemoEditor {
   Future<void> updateTranscript(int memoId, String text);
-  Future<void> deleteMemo(int memoId);          // メモ全体削除（音声+テキスト+タグ）
-  Future<void> deleteAudioFile(int memoId);      // 音声ファイルのみ削除（テキストは残る）
+  Future<void> deleteMemo(int memoId);
+  Future<void> deleteAudioFile(int memoId);
   Future<void> addTag(int memoId, String tagName);
   Future<void> removeTag(int memoId, int tagId);
 }
 
-// === 音声再生 ===
-@riverpod
-class AudioPlayer extends _$AudioPlayer {
-  // build() → PlaybackState (stopped / playing / paused)
-  Future<void> play(String filePath);
-  void pause();
-  void seek(Duration position);
-  Stream<Duration> get position;
-  Stream<Duration> get duration;
-}
-
-// === 設定 ===
+// === 設定 (@riverpod) ===
 @riverpod
 class ThemeSetting extends _$ThemeSetting {
   ThemeMode build() => ThemeMode.system;
@@ -282,10 +296,13 @@ class ThemeSetting extends _$ThemeSetting {
 **データフロー（録音→保存）:**
 
 1. RecordingScreen → FABタップ → `RecordingController.startRecording()`
-2. AudioRecordingService がマイク開始（バックグラウンド継続）
-3. PCM ストリーム → Int16→Float32変換 → SpeechRecognitionService
-4. VAD セグメント検出 → SenseVoice 認識 → リアルタイムテキスト表示
-5. 停止 → flush → Memo を drift に保存 + 音声ファイル保持
+2. 状態を `initializing` に → UI で「音声認識モデルを準備中...」表示
+3. マイク権限チェック → SpeechRecognitionService 初期化（モデルロード含む）
+4. AudioRecordingService がマイク開始 → 状態を `recording` に → `RecordingActive.start()`
+5. PCM ストリーム（Uint8List）→ Int16→Float32変換（アライメント考慮）→ SpeechRecognitionService
+6. VAD セグメント検出 → SenseVoice オフライン認識 → `liveTranscriptProvider` でリアルタイム表示
+7. 停止 → flush → Memo を drift に保存（相対パス）+ 音声 WAV ファイル保持
+8. `memoListProvider` / `tagListProvider` を invalidate して一覧更新
 
 ---
 
@@ -307,7 +324,9 @@ class ThemeSetting extends _$ThemeSetting {
 **テスト方針:**
 - サービス層は Riverpod Provider override でモック差し替え
 - drift は `NativeDatabase.memory()` でインメモリテスト
+- AuthService は mockito でモック生成
 - Widget テストはスコープ外（将来追加可能）
+- 現在 47 テスト Pass
 
 ---
 
@@ -315,14 +334,15 @@ class ThemeSetting extends _$ThemeSetting {
 
 ```text
 lib/
-├── main.dart
-├── app.dart                           # MaterialApp + GoRouter + テーマ設定
+├── main.dart                          # エントリポイント（sherpa.initBindings()）
+├── app.dart                           # MaterialApp.router + 認証ライフサイクル管理
 ├── core/
-│   ├── constants.dart
+│   ├── constants.dart                 # モデルパス、サンプルレート等
 │   ├── theme.dart                     # Material 3 テーマ (ブルー系, ライト/ダーク)
-│   ├── router.dart                    # GoRouter 定義 + 認証ガード
+│   ├── router.dart                    # GoRouter + AuthState / RecordingActive providers
+│   ├── auth_lifecycle.dart            # State パターン認証ライフサイクル管理
 │   └── utils/
-│       └── pcm_converter.dart
+│       └── pcm_converter.dart         # Int16 PCM → Float32 変換（アライメント対応）
 ├── services/
 │   ├── speech_recognition_service.dart
 │   ├── audio_recording_service.dart
@@ -360,7 +380,7 @@ lib/
 │       ├── settings_screen.dart
 │       └── settings_controller.dart
 ├── models/
-│   ├── recording_state.dart       # 録音状態 (freezed)
+│   ├── recording_state.dart       # 録音状態 (freezed): idle/initializing/recording/processing
 │   ├── playback_state.dart        # 再生状態 (freezed)
 │   ├── memo_result.dart           # 録音結果 (freezed)
 │   └── transcription_result.dart  # 認識結果 (freezed)
