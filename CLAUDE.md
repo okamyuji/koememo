@@ -71,8 +71,6 @@ fvm flutter build apk --release        # Android ビルド
 
 ## 詳細ドキュメント
 
-- 設計文書: `docs/2026-03-21-koememo-design.md`
-- 実装計画: `docs/plans/2026-03-21-koememo-implementation.md`
 - sherpa_onnx 実装詳細: `sherpa-onnx-flutter-guide.md`
 
 ## 罠・注意点
