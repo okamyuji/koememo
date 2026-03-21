@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:koememo/core/auth_lifecycle.dart';
 import 'package:koememo/core/router.dart';
 import 'package:koememo/core/theme.dart';
 import 'package:koememo/features/settings/settings_controller.dart';
@@ -13,9 +14,14 @@ class KoememoApp extends ConsumerStatefulWidget {
 
 class _KoememoAppState extends ConsumerState<KoememoApp>
     with WidgetsBindingObserver {
+  late final AuthLifecycleManager _lifecycleManager;
+
   @override
   void initState() {
     super.initState();
+    _lifecycleManager = AuthLifecycleManager(
+      onLock: () => ref.read(authStateProvider.notifier).lock(),
+    );
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -25,28 +31,22 @@ class _KoememoAppState extends ConsumerState<KoememoApp>
     super.dispose();
   }
 
-  bool _wasInBackground = false;
-
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive) {
-      _wasInBackground = true;
-    } else if (state == AppLifecycleState.resumed && _wasInBackground) {
-      _wasInBackground = false;
-      final isAuthenticated = ref.read(authStateProvider);
-      if (isAuthenticated) {
-        // 認証済み状態からバックグラウンド復帰した場合のみロック
-        // （未認証=認証画面表示中はロックしない→無限ループ防止）
-        ref.read(authStateProvider.notifier).lock();
-      }
-    }
+    _lifecycleManager.handleLifecycleChange(state);
   }
 
   @override
   Widget build(BuildContext context) {
     final goRouter = ref.watch(routerProvider);
     final themeMode = ref.watch(themeSettingProvider);
+
+    // 認証状態が変わったら LifecycleManager に通知
+    ref.listen(authStateProvider, (_, isAuthenticated) {
+      if (isAuthenticated) {
+        _lifecycleManager.onAuthenticated();
+      }
+    });
 
     return MaterialApp.router(
       title: 'こえメモ',
