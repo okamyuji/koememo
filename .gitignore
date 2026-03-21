@@ -1,3 +1,7 @@
+# Model files (too large for git, download separately)
+assets/models/sense-voice/*.onnx
+assets/models/sense-voice/tokens.txt
+
 # Flutter/Dart/Pub
 **/doc/api/
 **/ios/Flutter/.last_build_id
