@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:koememo/database/daos/memo_dao.dart';
 import 'package:koememo/models/memo_result.dart';
@@ -26,19 +27,33 @@ class RecordingController extends _$RecordingController {
 
   Future<void> startRecording() async {
     _recordingService = AudioRecordingService();
-    _speechService = SpeechRecognitionService();
     _currentTranscript = '';
 
-    await _speechService!.initialize();
+    // マイクパーミッション確認
+    final hasPermission = await _recordingService!.hasPermission();
+    if (!hasPermission) {
+      debugPrint('Microphone permission denied');
+      return;
+    }
 
-    _recognitionSubscription = _speechService!.results.listen((result) {
-      _currentTranscript += result.text;
-      _transcriptController.add(_currentTranscript);
-    });
+    // 音声認識の初期化（モデル未配置の場合はスキップして録音のみ）
+    try {
+      _speechService = SpeechRecognitionService();
+      await _speechService!.initialize();
 
-    _recordingService!.onAudioData = (samples) {
-      _speechService!.acceptWaveform(samples);
-    };
+      _recognitionSubscription = _speechService!.results.listen((result) {
+        _currentTranscript += result.text;
+        _transcriptController.add(_currentTranscript);
+      });
+
+      _recordingService!.onAudioData = (samples) {
+        _speechService!.acceptWaveform(samples);
+      };
+    } catch (e) {
+      debugPrint('Speech recognition init failed (recording only): $e');
+      _speechService?.dispose();
+      _speechService = null;
+    }
 
     _recordingStartTime = DateTime.now();
     final filePath = await _recordingService!.startRecording();
@@ -59,8 +74,10 @@ class RecordingController extends _$RecordingController {
         ? DateTime.now().difference(_recordingStartTime!).inMilliseconds
         : 0;
 
+    final now = DateTime.now();
     final title =
-        '${DateTime.now().year}/${DateTime.now().month.toString().padLeft(2, '0')}/${DateTime.now().day.toString().padLeft(2, '0')} ${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')} のメモ';
+        '${now.year}/${now.month.toString().padLeft(2, '0')}/${now.day.toString().padLeft(2, '0')} '
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} のメモ';
 
     final db = ref.read(appDatabaseProvider);
     final memoDao = MemoDao(db);

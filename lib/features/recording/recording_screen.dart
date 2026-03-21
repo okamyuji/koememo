@@ -69,15 +69,23 @@ class _RecordingScreenState extends ConsumerState<RecordingScreen> {
           ? const CircularProgressIndicator()
           : FloatingActionButton.large(
               onPressed: () async {
-                if (isRecording) {
-                  await ref
-                      .read(recordingControllerProvider.notifier)
-                      .stopRecording();
-                  if (context.mounted) context.pop();
-                } else {
-                  await ref
-                      .read(recordingControllerProvider.notifier)
-                      .startRecording();
+                try {
+                  if (isRecording) {
+                    await ref
+                        .read(recordingControllerProvider.notifier)
+                        .stopRecording();
+                    if (context.mounted) context.pop();
+                  } else {
+                    await ref
+                        .read(recordingControllerProvider.notifier)
+                        .startRecording();
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text('エラー: $e')));
+                  }
                 }
               },
               child: Icon(isRecording ? Icons.stop : Icons.mic, size: 36),
