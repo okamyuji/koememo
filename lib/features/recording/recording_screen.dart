@@ -14,13 +14,17 @@ class RecordingScreen extends ConsumerWidget {
     final recordingState = ref.watch(recordingControllerProvider);
     final isRecording = recordingState is Recording;
     final isProcessing = recordingState is RecordingProcessing;
+    final isInitializing = recordingState is RecordingInitializing;
     final isIdle = recordingState is RecordingIdle;
+    final isBusy = isProcessing || isInitializing;
     final transcript = ref.watch(liveTranscriptProvider);
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          isRecording
+          isInitializing
+              ? '準備中...'
+              : isRecording
               ? '録音中...'
               : isProcessing
               ? '処理中...'
@@ -40,7 +44,21 @@ class RecordingScreen extends ConsumerWidget {
             const Spacer(),
             WaveformIndicator(isRecording: isRecording),
             const SizedBox(height: 32),
-            if (isRecording)
+            if (isInitializing)
+              const Expanded(
+                flex: 3,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text('音声認識モデルを準備中...'),
+                    ],
+                  ),
+                ),
+              )
+            else if (isRecording)
               Expanded(
                 flex: 3,
                 child: transcript.isEmpty
@@ -74,7 +92,7 @@ class RecordingScreen extends ConsumerWidget {
           ],
         ),
       ),
-      floatingActionButton: isProcessing
+      floatingActionButton: isBusy
           ? const Padding(
               padding: EdgeInsets.only(bottom: 32),
               child: CircularProgressIndicator(),

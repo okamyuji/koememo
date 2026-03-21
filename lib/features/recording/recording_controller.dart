@@ -37,15 +37,32 @@ class RecordingController extends _$RecordingController {
   RecordingState build() => const RecordingState.idle();
 
   Future<void> startRecording() async {
-    _recordingService = AudioRecordingService();
     _currentTranscript = '';
     ref.read(liveTranscriptProvider.notifier).reset();
 
+    // 初期化中の状態を表示
+    state = const RecordingState.initializing();
+
+    // マイク権限チェック
+    _recordingService = AudioRecordingService();
     final hasPermission = await _recordingService!.hasPermission();
     if (!hasPermission) {
       _recordingService?.dispose();
       _recordingService = null;
+      state = const RecordingState.idle();
       throw Exception('マイクのアクセス許可が必要です');
+    }
+
+    // 音声認識の初期化（モデルロード含む）
+    try {
+      _speechService = SpeechRecognitionService();
+      await _speechService!.initialize();
+    } catch (e, stack) {
+      debugPrint('Speech recognition init failed: $e');
+      debugPrint('Stack: $stack');
+      // 音声認識なしでも録音は続行
+      _speechService?.dispose();
+      _speechService = null;
     }
 
     // 録音を開始
@@ -54,11 +71,8 @@ class RecordingController extends _$RecordingController {
     state = RecordingState.recording(filePath: filePath);
     ref.read(recordingActiveProvider.notifier).start();
 
-    // 音声認識の初期化（録音開始後に非同期で）
-    try {
-      _speechService = SpeechRecognitionService();
-      await _speechService!.initialize();
-
+    // 音声認識が利用可能ならストリーミング接続
+    if (_speechService != null) {
       _recognitionSubscription = _speechService!.results.listen((result) {
         _currentTranscript += result.text;
         ref.read(liveTranscriptProvider.notifier).update(_currentTranscript);
@@ -67,12 +81,10 @@ class RecordingController extends _$RecordingController {
       _recordingService!.onAudioData = (samples) {
         _speechService?.acceptWaveform(samples);
       };
-    } catch (e, stack) {
-      debugPrint('Speech recognition init failed: $e');
-      debugPrint('Stack: $stack');
-      ref.read(liveTranscriptProvider.notifier).update('[文字起こし初期化エラー] $e');
-      _speechService?.dispose();
-      _speechService = null;
+    } else {
+      ref
+          .read(liveTranscriptProvider.notifier)
+          .update('[文字起こし利用不可: モデル初期化に失敗]');
     }
   }
 
