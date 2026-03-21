@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:koememo/database/app_database.dart';
 import 'package:koememo/database/daos/memo_dao.dart';
 import 'package:koememo/database/daos/tag_dao.dart';
+import 'package:koememo/features/memo_list/memo_list_controller.dart';
 import 'package:koememo/services/database_service.dart';
 
 final memoDetailProvider = FutureProvider.family.autoDispose<Memo?, int>((
@@ -40,6 +41,7 @@ class MemoEditor extends Notifier<Object?> {
     final dao = MemoDao(db);
     await dao.updateTranscript(memoId, text);
     ref.invalidate(memoDetailProvider(memoId));
+    ref.invalidate(memoListProvider);
   }
 
   Future<void> deleteMemo(int memoId) async {
@@ -61,6 +63,7 @@ class MemoEditor extends Notifier<Object?> {
     }
 
     await memoDao.deleteMemo(memoId);
+    ref.invalidate(memoListProvider);
   }
 
   Future<void> deleteAudioFile(int memoId) async {

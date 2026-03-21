@@ -14,17 +14,24 @@ class RecordingScreen extends ConsumerWidget {
     final recordingState = ref.watch(recordingControllerProvider);
     final isRecording = recordingState is Recording;
     final isProcessing = recordingState is RecordingProcessing;
+    final isIdle = recordingState is RecordingIdle;
     final transcript = ref.watch(liveTranscriptProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('録音'),
-        leading: isRecording || isProcessing
-            ? const SizedBox.shrink()
-            : IconButton(
+        title: Text(
+          isRecording
+              ? '録音中...'
+              : isProcessing
+              ? '処理中...'
+              : '録音',
+        ),
+        leading: isIdle
+            ? IconButton(
                 icon: const Icon(Icons.arrow_back),
                 onPressed: () => context.go('/'),
-              ),
+              )
+            : const SizedBox.shrink(),
       ),
       body: Padding(
         padding: const EdgeInsets.all(24),
@@ -33,13 +40,30 @@ class RecordingScreen extends ConsumerWidget {
             const Spacer(),
             WaveformIndicator(isRecording: isRecording),
             const SizedBox(height: 32),
-            if (isRecording || transcript.isNotEmpty)
+            if (isRecording)
               Expanded(
                 flex: 3,
-                child: SingleChildScrollView(
-                  reverse: true,
-                  child: LiveTranscriptView(transcript: transcript),
-                ),
+                child: transcript.isEmpty
+                    ? Center(
+                        child: Text(
+                          '録音しています...',
+                          style: Theme.of(context).textTheme.bodyLarge
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      )
+                    : SingleChildScrollView(
+                        reverse: true,
+                        child: LiveTranscriptView(transcript: transcript),
+                      ),
+              )
+            else if (isProcessing)
+              const Expanded(
+                flex: 3,
+                child: Center(child: Text('メモを保存しています...')),
               )
             else
               const Expanded(
@@ -57,7 +81,14 @@ class RecordingScreen extends ConsumerWidget {
             )
           : FloatingActionButton.large(
               onPressed: () => _handleFabPress(context, ref, isRecording),
-              child: Icon(isRecording ? Icons.stop : Icons.mic, size: 36),
+              backgroundColor: isRecording
+                  ? Theme.of(context).colorScheme.error
+                  : null,
+              child: Icon(
+                isRecording ? Icons.stop : Icons.mic,
+                size: 36,
+                color: isRecording ? Colors.white : null,
+              ),
             ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
@@ -70,12 +101,8 @@ class RecordingScreen extends ConsumerWidget {
   ) async {
     try {
       if (isRecording) {
-        final result = await ref
-            .read(recordingControllerProvider.notifier)
-            .stopRecording();
-        if (context.mounted && result != null) {
-          context.go('/');
-        }
+        await ref.read(recordingControllerProvider.notifier).stopRecording();
+        if (context.mounted) context.go('/');
       } else {
         await ref.read(recordingControllerProvider.notifier).startRecording();
       }
@@ -83,7 +110,7 @@ class RecordingScreen extends ConsumerWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('エラー: $e')));
+        ).showSnackBar(SnackBar(content: Text('$e')));
       }
     }
   }

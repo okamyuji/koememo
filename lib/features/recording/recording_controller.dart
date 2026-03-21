@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:koememo/database/daos/memo_dao.dart';
+import 'package:koememo/features/memo_list/memo_list_controller.dart';
 import 'package:koememo/models/memo_result.dart';
 import 'package:koememo/models/recording_state.dart';
 import 'package:koememo/services/audio_recording_service.dart';
@@ -11,7 +12,6 @@ import 'package:koememo/services/speech_recognition_service.dart';
 
 part 'recording_controller.g.dart';
 
-/// ライブ文字起こしテキストを UI で watch するための Provider
 class LiveTranscriptNotifier extends Notifier<String> {
   @override
   String build() => '';
@@ -47,7 +47,12 @@ class RecordingController extends _$RecordingController {
       throw Exception('マイクのアクセス許可が必要です');
     }
 
-    // 音声認識の初期化（モデル未配置の場合はスキップして録音のみ）
+    // まず録音を開始（UIが即座に反応するように）
+    _recordingStartTime = DateTime.now();
+    final filePath = await _recordingService!.startRecording();
+    state = RecordingState.recording(filePath: filePath);
+
+    // 音声認識の初期化（録音開始後に非同期で。モデル未配置の場合はスキップ）
     try {
       _speechService = SpeechRecognitionService();
       await _speechService!.initialize();
@@ -65,10 +70,6 @@ class RecordingController extends _$RecordingController {
       _speechService?.dispose();
       _speechService = null;
     }
-
-    _recordingStartTime = DateTime.now();
-    final filePath = await _recordingService!.startRecording();
-    state = RecordingState.recording(filePath: filePath);
   }
 
   Future<MemoResult?> stopRecording() async {
@@ -77,10 +78,11 @@ class RecordingController extends _$RecordingController {
     state = const RecordingState.processing();
 
     final filePath = await _recordingService?.stopRecording();
-    _speechService?.flush();
 
-    // flush 後の認識結果を待つ
-    await Future.delayed(const Duration(milliseconds: 300));
+    if (_speechService != null) {
+      _speechService!.flush();
+      await Future.delayed(const Duration(milliseconds: 300));
+    }
 
     final durationMs = _recordingStartTime != null
         ? DateTime.now().difference(_recordingStartTime!).inMilliseconds
@@ -104,6 +106,10 @@ class RecordingController extends _$RecordingController {
 
     _cleanup();
     state = const RecordingState.idle();
+
+    // メモ一覧を更新
+    ref.invalidate(memoListProvider);
+    ref.invalidate(tagListProvider);
 
     return MemoResult(
       filePath: filePath ?? '',
