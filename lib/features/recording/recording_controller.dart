@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:koememo/database/daos/memo_dao.dart';
 import 'package:koememo/models/memo_result.dart';
@@ -10,17 +11,26 @@ import 'package:koememo/services/speech_recognition_service.dart';
 
 part 'recording_controller.g.dart';
 
+/// ライブ文字起こしテキストを UI で watch するための Provider
+class LiveTranscriptNotifier extends Notifier<String> {
+  @override
+  String build() => '';
+
+  void update(String text) => state = text;
+  void reset() => state = '';
+}
+
+final liveTranscriptProvider = NotifierProvider<LiveTranscriptNotifier, String>(
+  LiveTranscriptNotifier.new,
+);
+
 @riverpod
 class RecordingController extends _$RecordingController {
   AudioRecordingService? _recordingService;
   SpeechRecognitionService? _speechService;
   StreamSubscription<RecognitionResult>? _recognitionSubscription;
   String _currentTranscript = '';
-  final _transcriptController = StreamController<String>.broadcast();
   DateTime? _recordingStartTime;
-
-  Stream<String> get liveTranscript => _transcriptController.stream;
-  String get currentTranscript => _currentTranscript;
 
   @override
   RecordingState build() => const RecordingState.idle();
@@ -28,9 +38,12 @@ class RecordingController extends _$RecordingController {
   Future<void> startRecording() async {
     _recordingService = AudioRecordingService();
     _currentTranscript = '';
+    ref.read(liveTranscriptProvider.notifier).reset();
 
     final hasPermission = await _recordingService!.hasPermission();
     if (!hasPermission) {
+      _recordingService?.dispose();
+      _recordingService = null;
       throw Exception('マイクのアクセス許可が必要です');
     }
 
@@ -41,11 +54,11 @@ class RecordingController extends _$RecordingController {
 
       _recognitionSubscription = _speechService!.results.listen((result) {
         _currentTranscript += result.text;
-        _transcriptController.add(_currentTranscript);
+        ref.read(liveTranscriptProvider.notifier).update(_currentTranscript);
       });
 
       _recordingService!.onAudioData = (samples) {
-        _speechService!.acceptWaveform(samples);
+        _speechService?.acceptWaveform(samples);
       };
     } catch (e) {
       debugPrint('Speech recognition init failed (recording only): $e');
@@ -66,7 +79,8 @@ class RecordingController extends _$RecordingController {
     final filePath = await _recordingService?.stopRecording();
     _speechService?.flush();
 
-    await Future.delayed(const Duration(milliseconds: 200));
+    // flush 後の認識結果を待つ
+    await Future.delayed(const Duration(milliseconds: 300));
 
     final durationMs = _recordingStartTime != null
         ? DateTime.now().difference(_recordingStartTime!).inMilliseconds
@@ -77,7 +91,6 @@ class RecordingController extends _$RecordingController {
         '${now.year}/${now.month.toString().padLeft(2, '0')}/${now.day.toString().padLeft(2, '0')} '
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} のメモ';
 
-    // 相対パスで保存（設計文書: Documents からの相対パス）
     final relativePath = _recordingService?.relativeFilePath;
 
     final db = ref.read(appDatabaseProvider);
@@ -89,13 +102,7 @@ class RecordingController extends _$RecordingController {
       durationMs: durationMs,
     );
 
-    _recognitionSubscription?.cancel();
-    _recognitionSubscription = null;
-    _speechService?.dispose();
-    _speechService = null;
-    _recordingService?.dispose();
-    _recordingService = null;
-
+    _cleanup();
     state = const RecordingState.idle();
 
     return MemoResult(
@@ -106,11 +113,16 @@ class RecordingController extends _$RecordingController {
   }
 
   void cancelRecording() {
+    _cleanup();
+    state = const RecordingState.idle();
+  }
+
+  void _cleanup() {
     _recognitionSubscription?.cancel();
+    _recognitionSubscription = null;
     _speechService?.dispose();
+    _speechService = null;
     _recordingService?.dispose();
     _recordingService = null;
-    _speechService = null;
-    state = const RecordingState.idle();
   }
 }

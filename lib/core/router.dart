@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:koememo/features/auth/auth_screen.dart';
@@ -20,25 +22,37 @@ class AuthState extends _$AuthState {
   void lock() => state = false;
 }
 
-@Riverpod(keepAlive: true)
-GoRouter router(Ref ref) {
-  final authState = ref.watch(authStateProvider);
-  final recordingState = ref.watch(recordingControllerProvider);
-  final isRecording = recordingState is Recording;
+/// GoRouter の redirect を再評価させるための Listenable
+class RouterRefreshNotifier extends ChangeNotifier {
+  void notify() => notifyListeners();
+}
+
+final routerRefreshProvider = Provider<RouterRefreshNotifier>((ref) {
+  final notifier = RouterRefreshNotifier();
+
+  // authState が変わったら GoRouter を再評価
+  ref.listen(authStateProvider, (_, _) => notifier.notify());
+
+  return notifier;
+});
+
+final routerProvider = Provider<GoRouter>((ref) {
+  final refreshNotifier = ref.watch(routerRefreshProvider);
 
   return GoRouter(
-    initialLocation: '/',
+    initialLocation: '/auth',
+    refreshListenable: refreshNotifier,
     redirect: (context, state) {
-      final isAuthenticated = authState;
+      // redirect 時に最新の状態を read（watch ではない）
+      final isAuthenticated = ref.read(authStateProvider);
+      final recordingState = ref.read(recordingControllerProvider);
+      final isRecording = recordingState is Recording;
       final isAuthRoute = state.matchedLocation == '/auth';
 
-      // 録音中は認証をバイパス（設計文書: 録音中は認証スキップ）
-      if (isRecording) {
-        if (isAuthRoute) return '/recording';
-        return null;
-      }
+      // 録音中は認証をバイパス
+      if (isRecording && isAuthRoute) return '/recording';
 
-      if (!isAuthenticated && !isAuthRoute) return '/auth';
+      if (!isAuthenticated && !isRecording && !isAuthRoute) return '/auth';
       if (isAuthenticated && isAuthRoute) return '/';
       return null;
     },
@@ -71,4 +85,4 @@ GoRouter router(Ref ref) {
       ),
     ],
   );
-}
+});
