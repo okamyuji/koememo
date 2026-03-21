@@ -42,10 +42,16 @@ class _KoememoAppState extends ConsumerState<KoememoApp>
     final goRouter = ref.watch(routerProvider);
     final themeMode = ref.watch(themeSettingProvider);
 
+    // auth 状態変更時に GoRouter の redirect を再評価
     ref.listen(authStateProvider, (_, isAuthenticated) {
       if (isAuthenticated) {
         _lifecycleManager.onAuthenticated();
       }
+      goRouter.refresh();
+    });
+
+    ref.listen(recordingActiveProvider, (_, _) {
+      goRouter.refresh();
     });
 
     return MaterialApp.router(

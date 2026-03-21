@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:koememo/features/auth/auth_screen.dart';
@@ -19,8 +19,6 @@ class AuthState extends _$AuthState {
   void lock() => state = false;
 }
 
-/// 録音中フラグ（認証スキップ判定用）
-/// AuthLifecycleManager と GoRouter redirect の両方から参照される
 @Riverpod(keepAlive: true)
 class RecordingActive extends _$RecordingActive {
   @override
@@ -30,20 +28,10 @@ class RecordingActive extends _$RecordingActive {
   void stop() => state = false;
 }
 
-@Riverpod(keepAlive: true)
-Raw<GoRouter> router(Ref ref) {
-  final notifier = ValueNotifier(0);
-
-  ref.listen(authStateProvider, (_, _) {
-    notifier.value++;
-  });
-  ref.listen(recordingActiveProvider, (_, _) {
-    notifier.value++;
-  });
-
+/// GoRouter — 手書き Provider（@Riverpod の ref.listen 問題を回避）
+final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/auth',
-    refreshListenable: notifier,
     redirect: (context, state) {
       final isAuthenticated = ref.read(authStateProvider);
       final isRecording = ref.read(recordingActiveProvider);
@@ -83,4 +71,4 @@ Raw<GoRouter> router(Ref ref) {
       ),
     ],
   );
-}
+});
