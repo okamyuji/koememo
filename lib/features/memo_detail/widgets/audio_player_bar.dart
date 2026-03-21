@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:koememo/features/memo_detail/memo_detail_controller.dart';
 import 'package:koememo/services/audio_playback_service.dart';
 
 class AudioPlayerBar extends StatefulWidget {
@@ -23,7 +24,8 @@ class _AudioPlayerBarState extends State<AudioPlayerBar> {
   }
 
   Future<void> _initPlayer() async {
-    await _player.setFile(widget.filePath);
+    final absPath = await resolveAudioPath(widget.filePath);
+    await _player.setFile(absPath);
     _player.positionStream.listen((pos) {
       if (mounted) setState(() => _position = pos);
     });

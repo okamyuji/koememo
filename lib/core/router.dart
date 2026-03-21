@@ -6,6 +6,8 @@ import 'package:koememo/features/recording/recording_screen.dart';
 import 'package:koememo/features/memo_detail/memo_detail_screen.dart';
 import 'package:koememo/features/memo_edit/memo_edit_screen.dart';
 import 'package:koememo/features/settings/settings_screen.dart';
+import 'package:koememo/features/recording/recording_controller.dart';
+import 'package:koememo/models/recording_state.dart';
 
 part 'router.g.dart';
 
@@ -21,12 +23,20 @@ class AuthState extends _$AuthState {
 @Riverpod(keepAlive: true)
 GoRouter router(Ref ref) {
   final authState = ref.watch(authStateProvider);
+  final recordingState = ref.watch(recordingControllerProvider);
+  final isRecording = recordingState is Recording;
 
   return GoRouter(
     initialLocation: '/',
     redirect: (context, state) {
       final isAuthenticated = authState;
       final isAuthRoute = state.matchedLocation == '/auth';
+
+      // 録音中は認証をバイパス（設計文書: 録音中は認証スキップ）
+      if (isRecording) {
+        if (isAuthRoute) return '/recording';
+        return null;
+      }
 
       if (!isAuthenticated && !isAuthRoute) return '/auth';
       if (isAuthenticated && isAuthRoute) return '/';

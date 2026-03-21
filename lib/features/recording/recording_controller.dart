@@ -29,11 +29,9 @@ class RecordingController extends _$RecordingController {
     _recordingService = AudioRecordingService();
     _currentTranscript = '';
 
-    // マイクパーミッション確認
     final hasPermission = await _recordingService!.hasPermission();
     if (!hasPermission) {
-      debugPrint('Microphone permission denied');
-      return;
+      throw Exception('マイクのアクセス許可が必要です');
     }
 
     // 音声認識の初期化（モデル未配置の場合はスキップして録音のみ）
@@ -79,12 +77,15 @@ class RecordingController extends _$RecordingController {
         '${now.year}/${now.month.toString().padLeft(2, '0')}/${now.day.toString().padLeft(2, '0')} '
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} のメモ';
 
+    // 相対パスで保存（設計文書: Documents からの相対パス）
+    final relativePath = _recordingService?.relativeFilePath;
+
     final db = ref.read(appDatabaseProvider);
     final memoDao = MemoDao(db);
     await memoDao.insertMemo(
       title: title,
       transcript: _currentTranscript,
-      audioFilePath: filePath,
+      audioFilePath: relativePath,
       durationMs: durationMs,
     );
 

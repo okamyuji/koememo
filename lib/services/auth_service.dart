@@ -1,4 +1,7 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:local_auth/local_auth.dart';
+
+final authServiceProvider = Provider<AuthService>((_) => AuthService());
 
 class AuthService {
   final LocalAuthentication _localAuth;

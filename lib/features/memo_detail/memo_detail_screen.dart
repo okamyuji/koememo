@@ -35,7 +35,7 @@ class MemoDetailScreen extends ConsumerWidget {
                 icon: const Icon(Icons.share),
                 onPressed: () {
                   if (memo.transcript.isNotEmpty) {
-                    ShareService().shareText(memo.transcript);
+                    ref.read(shareServiceProvider).shareText(memo.transcript);
                   }
                 },
               ),

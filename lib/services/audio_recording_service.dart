@@ -12,10 +12,12 @@ class AudioRecordingService {
   StreamSubscription<List<int>>? _audioStreamSubscription;
   bool _isRecording = false;
   String? _currentFilePath;
+  String? _relativeFilePath;
   final List<int> _pcmBuffer = [];
 
   bool get isRecording => _isRecording;
   String? get currentFilePath => _currentFilePath;
+  String? get relativeFilePath => _relativeFilePath;
 
   void Function(Float32List samples)? onAudioData;
 
@@ -29,7 +31,8 @@ class AudioRecordingService {
     }
 
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    _currentFilePath = p.join(memosDir.path, 'memo_$timestamp.wav');
+    _relativeFilePath = 'memos/memo_$timestamp.wav';
+    _currentFilePath = p.join(dir.path, _relativeFilePath!);
     _pcmBuffer.clear();
 
     final stream = await _recorder.startStream(

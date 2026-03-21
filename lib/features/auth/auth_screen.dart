@@ -27,7 +27,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       _errorMessage = null;
     });
 
-    final authService = AuthService();
+    final authService = ref.read(authServiceProvider);
     final success = await authService.authenticate();
 
     if (mounted) {

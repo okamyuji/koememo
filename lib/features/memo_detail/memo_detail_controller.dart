@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:koememo/database/app_database.dart';
 import 'package:koememo/database/daos/memo_dao.dart';
 import 'package:koememo/database/daos/tag_dao.dart';
@@ -23,6 +25,12 @@ final memoTagsProvider = FutureProvider.family.autoDispose<List<Tag>, int>((
   return tagDao.getTagsForMemo(memoId);
 });
 
+/// 相対パスから絶対パスに変換するヘルパー
+Future<String> resolveAudioPath(String relativePath) async {
+  final dir = await getApplicationDocumentsDirectory();
+  return p.join(dir.path, relativePath);
+}
+
 class MemoEditor extends Notifier<Object?> {
   @override
   Object? build() => null;
@@ -31,16 +39,25 @@ class MemoEditor extends Notifier<Object?> {
     final db = ref.read(appDatabaseProvider);
     final dao = MemoDao(db);
     await dao.updateTranscript(memoId, text);
+    ref.invalidate(memoDetailProvider(memoId));
   }
 
   Future<void> deleteMemo(int memoId) async {
     final db = ref.read(appDatabaseProvider);
     final memoDao = MemoDao(db);
+    final tagDao = TagDao(db);
 
     final memo = await memoDao.getMemoById(memoId);
     if (memo?.audioFilePath != null) {
-      final file = File(memo!.audioFilePath!);
+      final absPath = await resolveAudioPath(memo!.audioFilePath!);
+      final file = File(absPath);
       if (await file.exists()) await file.delete();
+    }
+
+    // 外部キー CASCADE が保証されないため明示的に中間テーブルも削除
+    final tags = await tagDao.getTagsForMemo(memoId);
+    for (final tag in tags) {
+      await tagDao.removeTagFromMemo(memoId, tag.id);
     }
 
     await memoDao.deleteMemo(memoId);
@@ -52,11 +69,13 @@ class MemoEditor extends Notifier<Object?> {
 
     final memo = await memoDao.getMemoById(memoId);
     if (memo?.audioFilePath != null) {
-      final file = File(memo!.audioFilePath!);
+      final absPath = await resolveAudioPath(memo!.audioFilePath!);
+      final file = File(absPath);
       if (await file.exists()) await file.delete();
     }
 
     await memoDao.deleteAudioFile(memoId);
+    ref.invalidate(memoDetailProvider(memoId));
   }
 
   Future<void> addTag(int memoId, String tagName) async {
@@ -73,12 +92,14 @@ class MemoEditor extends Notifier<Object?> {
     }
 
     await tagDao.addTagToMemo(memoId, tagId);
+    ref.invalidate(memoTagsProvider(memoId));
   }
 
   Future<void> removeTag(int memoId, int tagId) async {
     final db = ref.read(appDatabaseProvider);
     final tagDao = TagDao(db);
     await tagDao.removeTagFromMemo(memoId, tagId);
+    ref.invalidate(memoTagsProvider(memoId));
   }
 }
 

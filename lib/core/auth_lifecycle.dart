@@ -12,10 +12,10 @@ abstract class AuthLifecycleState {
 /// 状態遷移を実行するためのコンテキストインターフェース
 abstract class AuthLifecycleContext {
   void lockAuth();
+  bool isRecordingActive();
 }
 
 /// 未認証状態（認証画面を表示中）
-/// → resumed されてもロックしない（無限ループ防止）
 class UnauthenticatedState extends AuthLifecycleState {
   const UnauthenticatedState();
 
@@ -27,7 +27,6 @@ class UnauthenticatedState extends AuthLifecycleState {
 }
 
 /// 認証済み・フォアグラウンド状態
-/// → paused されたら BackgroundState に遷移
 class AuthenticatedForegroundState extends AuthLifecycleState {
   const AuthenticatedForegroundState();
 
@@ -40,7 +39,6 @@ class AuthenticatedForegroundState extends AuthLifecycleState {
 }
 
 /// 認証済み・バックグラウンド状態
-/// → resumed されたらロックして未認証に遷移
 class AuthenticatedBackgroundState extends AuthLifecycleState {
   const AuthenticatedBackgroundState();
 
@@ -49,6 +47,10 @@ class AuthenticatedBackgroundState extends AuthLifecycleState {
 
   @override
   AuthLifecycleState onResumed(AuthLifecycleContext context) {
+    // 録音中は認証をスキップしてフォアグラウンドに戻す
+    if (context.isRecordingActive()) {
+      return const AuthenticatedForegroundState();
+    }
     context.lockAuth();
     return const UnauthenticatedState();
   }
@@ -58,10 +60,14 @@ class AuthenticatedBackgroundState extends AuthLifecycleState {
 class AuthLifecycleManager implements AuthLifecycleContext {
   AuthLifecycleState _state;
   final VoidCallback _onLock;
+  final bool Function() _isRecording;
 
-  AuthLifecycleManager({required VoidCallback onLock})
-    : _state = const UnauthenticatedState(),
-      _onLock = onLock;
+  AuthLifecycleManager({
+    required VoidCallback onLock,
+    required bool Function() isRecording,
+  }) : _state = const UnauthenticatedState(),
+       _onLock = onLock,
+       _isRecording = isRecording;
 
   void onAuthenticated() {
     _state = const AuthenticatedForegroundState();
@@ -70,10 +76,12 @@ class AuthLifecycleManager implements AuthLifecycleContext {
   void handleLifecycleChange(AppLifecycleState lifecycleState) {
     switch (lifecycleState) {
       case AppLifecycleState.paused:
-      case AppLifecycleState.inactive:
+        // paused のみをバックグラウンドとして扱う
+        // inactive（システムダイアログ: Face ID, マイク許可等）は無視
         _state = _state.onPaused(this);
       case AppLifecycleState.resumed:
         _state = _state.onResumed(this);
+      case AppLifecycleState.inactive:
       case AppLifecycleState.detached:
       case AppLifecycleState.hidden:
         break;
@@ -82,4 +90,7 @@ class AuthLifecycleManager implements AuthLifecycleContext {
 
   @override
   void lockAuth() => _onLock();
+
+  @override
+  bool isRecordingActive() => _isRecording();
 }
