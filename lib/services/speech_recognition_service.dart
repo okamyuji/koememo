@@ -20,6 +20,9 @@ class SpeechRecognitionService {
   sherpa.OfflineRecognizer? _recognizer;
   sherpa.VoiceActivityDetector? _vad;
   bool _isInitialized = false;
+  Completer<void>? _initCompleter;
+  bool _isProcessing = false;
+  final List<Float32List> _segmentQueue = [];
 
   final _resultController = StreamController<RecognitionResult>.broadcast();
   Stream<RecognitionResult> get results => _resultController.stream;
@@ -28,7 +31,20 @@ class SpeechRecognitionService {
 
   Future<void> initialize() async {
     if (_isInitialized) return;
+    if (_initCompleter != null) return _initCompleter!.future;
+    _initCompleter = Completer<void>();
 
+    try {
+      await _doInitialize();
+      _initCompleter!.complete();
+    } catch (e) {
+      _initCompleter!.completeError(e);
+      _initCompleter = null;
+      rethrow;
+    }
+  }
+
+  Future<void> _doInitialize() async {
     debugPrint('SpeechRecognitionService: initializing...');
     final modelDir = await ModelManager.ensureModelReady();
     debugPrint('SpeechRecognitionService: modelDir=$modelDir');
@@ -75,25 +91,40 @@ class SpeechRecognitionService {
     if (!_isInitialized || _vad == null || _recognizer == null) return;
 
     _vad!.acceptWaveform(samples);
-
-    while (!_vad!.isEmpty()) {
-      final segment = _vad!.front();
-      _vad!.pop();
-      _processSegment(segment.samples);
-    }
+    _drainVadQueue();
   }
 
   void flush() {
     if (_vad == null || _recognizer == null) return;
     _vad!.flush();
+    _drainVadQueue();
+  }
+
+  void _drainVadQueue() {
     while (!_vad!.isEmpty()) {
       final segment = _vad!.front();
       _vad!.pop();
-      _processSegment(segment.samples);
+      _segmentQueue.add(segment.samples);
     }
+    _processNextSegment();
   }
 
-  void _processSegment(Float32List samples) {
+  Future<void> _processNextSegment() async {
+    if (_isProcessing || _segmentQueue.isEmpty) return;
+    _isProcessing = true;
+
+    while (_segmentQueue.isNotEmpty) {
+      final samples = _segmentQueue.removeAt(0);
+      _decodeSegment(samples);
+      // イベントループに制御を返し、音声データの受信を妨げない
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    _isProcessing = false;
+  }
+
+  void _decodeSegment(Float32List samples) {
+    if (_recognizer == null) return;
     final stream = _recognizer!.createStream();
     stream.acceptWaveform(
       samples: samples,
@@ -134,6 +165,7 @@ class SpeechRecognitionService {
   }
 
   void dispose() {
+    _segmentQueue.clear();
     _resultController.close();
     _recognizer?.free();
     _vad?.free();

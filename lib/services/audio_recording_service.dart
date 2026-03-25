@@ -55,7 +55,9 @@ class AudioRecordingService {
     _isRecording = true;
 
     _audioStreamSubscription = stream.listen((data) {
-      _pcmBuffer.addAll(data);
+      if (_pcmBuffer.length < AppConstants.maxRecordingBytes) {
+        _pcmBuffer.addAll(data);
+      }
       final float32Data = PcmConverter.int16BytesToFloat32(data);
       onAudioData?.call(float32Data);
     });

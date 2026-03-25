@@ -10,4 +10,7 @@ class AppConstants {
   static const String tokensFileName = 'tokens.txt';
   static const String vadFileName = 'silero_vad.onnx';
   static const String language = 'ja';
+
+  /// 録音の最大長（60分 × 16kHz × 1ch × 2bytes = ~115MB）
+  static const int maxRecordingBytes = 60 * 60 * sampleRate * numChannels * 2;
 }

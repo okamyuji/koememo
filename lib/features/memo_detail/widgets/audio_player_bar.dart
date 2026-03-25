@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:koememo/features/memo_detail/memo_detail_controller.dart';
 import 'package:koememo/services/audio_playback_service.dart';
@@ -12,6 +13,7 @@ class AudioPlayerBar extends StatefulWidget {
 
 class _AudioPlayerBarState extends State<AudioPlayerBar> {
   late AudioPlaybackService _player;
+  final List<StreamSubscription<dynamic>> _subscriptions = [];
   bool _isPlaying = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
@@ -26,19 +28,28 @@ class _AudioPlayerBarState extends State<AudioPlayerBar> {
   Future<void> _initPlayer() async {
     final absPath = await resolveAudioPath(widget.filePath);
     await _player.setFile(absPath);
-    _player.positionStream.listen((pos) {
-      if (mounted) setState(() => _position = pos);
-    });
-    _player.durationStream.listen((dur) {
-      if (mounted && dur != null) setState(() => _duration = dur);
-    });
-    _player.playerStateStream.listen((state) {
-      if (mounted) setState(() => _isPlaying = state.playing);
-    });
+    _subscriptions.add(
+      _player.positionStream.listen((pos) {
+        if (mounted) setState(() => _position = pos);
+      }),
+    );
+    _subscriptions.add(
+      _player.durationStream.listen((dur) {
+        if (mounted && dur != null) setState(() => _duration = dur);
+      }),
+    );
+    _subscriptions.add(
+      _player.playerStateStream.listen((state) {
+        if (mounted) setState(() => _isPlaying = state.playing);
+      }),
+    );
   }
 
   @override
   void dispose() {
+    for (final sub in _subscriptions) {
+      sub.cancel();
+    }
     _player.dispose();
     super.dispose();
   }
