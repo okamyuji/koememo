@@ -39,7 +39,10 @@ class MemoEditor extends Notifier<Object?> {
   Future<void> updateTranscript(int memoId, String text) async {
     final db = ref.read(appDatabaseProvider);
     final dao = MemoDao(db);
-    await dao.updateTranscript(memoId, text);
+    final updatedRows = await dao.updateTranscript(memoId, text);
+    if (updatedRows == 0) {
+      throw StateError('Memo $memoId was not found');
+    }
     ref.invalidate(memoDetailProvider(memoId));
     ref.invalidate(memoListProvider);
   }

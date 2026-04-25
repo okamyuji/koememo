@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:koememo/features/memo_detail/memo_detail_controller.dart';
-import 'package:koememo/features/memo_edit/memo_edit_controller.dart';
 
 class MemoEditScreen extends ConsumerStatefulWidget {
   final int memoId;
@@ -13,8 +12,9 @@ class MemoEditScreen extends ConsumerStatefulWidget {
 }
 
 class _MemoEditScreenState extends ConsumerState<MemoEditScreen> {
-  late TextEditingController _textController;
+  late final TextEditingController _textController;
   bool _initialized = false;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -26,6 +26,32 @@ class _MemoEditScreenState extends ConsumerState<MemoEditScreen> {
   void dispose() {
     _textController.dispose();
     super.dispose();
+  }
+
+  Future<void> _onSave() async {
+    if (_saving) return;
+    final text = _textController.text.trim();
+    if (text.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('テキストが空のため保存できません')));
+      return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      await ref
+          .read(memoEditorProvider.notifier)
+          .updateTranscript(widget.memoId, text);
+      if (!mounted) return;
+      context.pop();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('保存に失敗しました: $e')));
+      setState(() => _saving = false);
+    }
   }
 
   @override
@@ -43,7 +69,6 @@ class _MemoEditScreenState extends ConsumerState<MemoEditScreen> {
 
         if (!_initialized) {
           _textController.text = memo.transcript;
-          ref.read(memoEditStateProvider.notifier).setText(memo.transcript);
           _initialized = true;
         }
 
@@ -52,13 +77,14 @@ class _MemoEditScreenState extends ConsumerState<MemoEditScreen> {
             title: const Text('メモ編集'),
             actions: [
               TextButton(
-                onPressed: () async {
-                  final saved = await ref
-                      .read(memoEditStateProvider.notifier)
-                      .save(widget.memoId);
-                  if (saved && context.mounted) context.pop();
-                },
-                child: const Text('保存'),
+                onPressed: _saving ? null : _onSave,
+                child: _saving
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('保存'),
               ),
             ],
           ),
@@ -73,9 +99,6 @@ class _MemoEditScreenState extends ConsumerState<MemoEditScreen> {
                 hintText: '文字起こしテキストを編集...',
                 border: OutlineInputBorder(),
               ),
-              onChanged: (text) {
-                ref.read(memoEditStateProvider.notifier).setText(text);
-              },
             ),
           ),
         );

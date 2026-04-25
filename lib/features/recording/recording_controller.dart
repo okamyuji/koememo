@@ -100,6 +100,28 @@ class RecordingController extends _$RecordingController {
       await Future.delayed(const Duration(milliseconds: 300));
     }
 
+    // 録音終了後にフル WAV ファイルを再認識し、ライブストリーミングより
+    // 文脈の保たれた高精度な書き起こしを最終結果として採用する。
+    // 失敗時はストリーミング中の結果にフォールバックする。
+    var finalTranscript = _currentTranscript;
+    if (_speechService != null && filePath != null) {
+      try {
+        final batchTranscript = await _speechService!.transcribeFile(filePath);
+        if (batchTranscript.trim().isNotEmpty) {
+          final selectedTranscript =
+              SpeechRecognitionService.selectBetterTranscript(
+                existing: _currentTranscript,
+                candidate: batchTranscript,
+              );
+          finalTranscript = selectedTranscript;
+          ref.read(liveTranscriptProvider.notifier).update(selectedTranscript);
+        }
+      } catch (e, stack) {
+        debugPrint('Batch transcription failed: $e');
+        debugPrint('Stack: $stack');
+      }
+    }
+
     final durationMs = _recordingStartTime != null
         ? DateTime.now().difference(_recordingStartTime!).inMilliseconds
         : 0;
@@ -115,7 +137,7 @@ class RecordingController extends _$RecordingController {
     final memoDao = MemoDao(db);
     await memoDao.insertMemo(
       title: title,
-      transcript: _currentTranscript,
+      transcript: finalTranscript,
       audioFilePath: relativePath,
       durationMs: durationMs,
     );
@@ -129,7 +151,7 @@ class RecordingController extends _$RecordingController {
 
     return MemoResult(
       filePath: filePath ?? '',
-      transcript: _currentTranscript,
+      transcript: finalTranscript,
       durationMs: durationMs,
     );
   }

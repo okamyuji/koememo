@@ -54,6 +54,15 @@ void main() {
       expect(memo!.transcript, 'new text');
     });
 
+    test('updateTranscript throws when memo is missing', () async {
+      final editor = container.read(memoEditorProvider.notifier);
+
+      await expectLater(
+        editor.updateTranscript(999, 'new text'),
+        throwsA(isA<StateError>()),
+      );
+    });
+
     test('deleteAudioFile sets audioFilePath to null', () async {
       final dao = MemoDao(db);
       final id = await dao.insertMemo(
