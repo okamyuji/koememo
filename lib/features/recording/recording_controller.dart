@@ -100,22 +100,26 @@ class RecordingController extends _$RecordingController {
       await Future.delayed(const Duration(milliseconds: 300));
     }
 
+    // バッチ認識中にストリーミング側のコールバックが _currentTranscript を
+    // 書き換えてレース条件を起こさないよう、ここで購読を停止しスナップショットを取る。
+    await _recognitionSubscription?.cancel();
+    _recognitionSubscription = null;
+    final streamingTranscript = _currentTranscript;
+
     // 録音終了後にフル WAV ファイルを再認識し、ライブストリーミングより
     // 文脈の保たれた高精度な書き起こしを最終結果として採用する。
     // 失敗時はストリーミング中の結果にフォールバックする。
-    var finalTranscript = _currentTranscript;
+    var finalTranscript = streamingTranscript;
     if (_speechService != null && filePath != null) {
       try {
         final batchTranscript = await _speechService!.transcribeFile(filePath);
-        if (batchTranscript.trim().isNotEmpty) {
-          final selectedTranscript =
-              SpeechRecognitionService.selectBetterTranscript(
-                existing: _currentTranscript,
-                candidate: batchTranscript,
-              );
-          finalTranscript = selectedTranscript;
-          ref.read(liveTranscriptProvider.notifier).update(selectedTranscript);
-        }
+        final selectedTranscript =
+            SpeechRecognitionService.selectBetterTranscript(
+              existing: streamingTranscript,
+              candidate: batchTranscript,
+            );
+        finalTranscript = selectedTranscript;
+        ref.read(liveTranscriptProvider.notifier).update(selectedTranscript);
       } catch (e, stack) {
         debugPrint('Batch transcription failed: $e');
         debugPrint('Stack: $stack');

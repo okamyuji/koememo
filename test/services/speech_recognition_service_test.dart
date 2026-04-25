@@ -53,5 +53,37 @@ void main() {
 
       expect(text, '今日は体調がよく朝ごはんも食べました');
     });
+
+    test(
+      'selectBetterTranscript prefers shorter clean candidate over noisy long existing',
+      () {
+        // ストリーミング側が誤認識でノイズ的に長くなっているケース。
+        // バッチ側のクリーンな結果を絶対長閾値以上なら採用する。
+        final text = SpeechRecognitionService.selectBetterTranscript(
+          existing: 'あああああああああああああああああああああああああああ',
+          candidate: '今日は会議です',
+        );
+
+        expect(text, '今日は会議です');
+      },
+    );
+
+    test('selectBetterTranscript keeps existing for empty candidate', () {
+      final text = SpeechRecognitionService.selectBetterTranscript(
+        existing: '今日は体調がよく朝ごはんも食べました',
+        candidate: '   ',
+      );
+
+      expect(text, '今日は体調がよく朝ごはんも食べました');
+    });
+
+    test('selectBetterTranscript accepts candidate when existing is empty', () {
+      final text = SpeechRecognitionService.selectBetterTranscript(
+        existing: '',
+        candidate: 'ABC',
+      );
+
+      expect(text, 'ABC');
+    });
   });
 }

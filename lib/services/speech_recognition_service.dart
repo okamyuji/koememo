@@ -17,6 +17,15 @@ class RecognitionResult {
 }
 
 class SpeechRecognitionService {
+  // candidate がノイズによる誤認識と疑われる絶対文字数の上限（これ未満で
+  // かつ existing が大幅に長いとき、existing を優先する）。
+  // 3 文字以下のごく短い transcript は誤認識（フィラー音等）の可能性が高い。
+  static const int _noisyShortCandidateThreshold = 4;
+
+  // transcribeFile でフル WAV 再認識をスキップしてよいセグメント結果の最低文字数。
+  // これ以上あれば VAD のセグメント結果を信頼しコストの高い再認識を省く。
+  static const int _segmentTrustThreshold = 8;
+
   sherpa.OfflineRecognizer? _recognizer;
   sherpa.VoiceActivityDetector? _vad;
   String? _modelDir;
@@ -182,6 +191,14 @@ class SpeechRecognitionService {
         }
 
         final segmentedTranscript = combineTranscriptSegments(segments);
+
+        // セグメント認識結果が十分な長さあるなら、フル WAV を再度デコードする
+        // コストの高い処理をスキップする。VAD のセグメンテーションが頼りない
+        // 短い結果のときだけ全体デコードでフォールバックする。
+        if (_meaningfulLength(segmentedTranscript) >= _segmentTrustThreshold) {
+          return segmentedTranscript;
+        }
+
         final fullTranscript = _decodeSamples(
           waveData.samples,
           waveData.sampleRate,
@@ -211,11 +228,13 @@ class SpeechRecognitionService {
     final existingLength = _meaningfulLength(normalizedExisting);
     final candidateLength = _meaningfulLength(normalizedCandidate);
 
-    if (candidateLength < 3 && existingLength >= 3) {
-      return normalizedExisting;
-    }
-
-    if (candidateLength * 2 < existingLength) {
+    // candidate が絶対的にも短い場合のみ existing を優先する。
+    // 3 文字以下のごく短い candidate（誤認識の可能性が高い）かつ
+    // existing がその 2 倍以上の長さあるときだけ existing を保持。
+    // これにより、ノイズで膨張した長い existing が一定の長さあるクリーンな
+    // candidate を不当に上書きするケースを防ぐ。
+    if (candidateLength < _noisyShortCandidateThreshold &&
+        candidateLength * 2 < existingLength) {
       return normalizedExisting;
     }
 
