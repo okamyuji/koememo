@@ -17,8 +17,18 @@ class RecognitionResult {
 }
 
 class SpeechRecognitionService {
+  // candidate がノイズによる誤認識と疑われる絶対文字数の上限（これ未満で
+  // かつ existing が大幅に長いとき、existing を優先する）。
+  // 3 文字以下のごく短い transcript は誤認識（フィラー音等）の可能性が高い。
+  static const int _noisyShortCandidateThreshold = 4;
+
+  // transcribeFile でフル WAV 再認識をスキップしてよいセグメント結果の最低文字数。
+  // これ以上あれば VAD のセグメント結果を信頼しコストの高い再認識を省く。
+  static const int _segmentTrustThreshold = 8;
+
   sherpa.OfflineRecognizer? _recognizer;
   sherpa.VoiceActivityDetector? _vad;
+  String? _modelDir;
   bool _isInitialized = false;
   Completer<void>? _initCompleter;
   bool _isProcessing = false;
@@ -47,6 +57,7 @@ class SpeechRecognitionService {
   Future<void> _doInitialize() async {
     debugPrint('SpeechRecognitionService: initializing...');
     final modelDir = await ModelManager.ensureModelReady();
+    _modelDir = modelDir;
     debugPrint('SpeechRecognitionService: modelDir=$modelDir');
 
     final recognizerConfig = sherpa.OfflineRecognizerConfig(
@@ -65,6 +76,14 @@ class SpeechRecognitionService {
     _recognizer = sherpa.OfflineRecognizer(recognizerConfig);
     debugPrint('SpeechRecognitionService: OfflineRecognizer created');
 
+    debugPrint('SpeechRecognitionService: creating VoiceActivityDetector...');
+    _vad = _createVoiceActivityDetector(modelDir);
+    debugPrint('SpeechRecognitionService: initialized successfully');
+
+    _isInitialized = true;
+  }
+
+  sherpa.VoiceActivityDetector _createVoiceActivityDetector(String modelDir) {
     final vadConfig = sherpa.VadModelConfig(
       sileroVad: sherpa.SileroVadModelConfig(
         model: '$modelDir/${AppConstants.vadFileName}',
@@ -77,14 +96,10 @@ class SpeechRecognitionService {
       numThreads: 1,
       debug: false,
     );
-    debugPrint('SpeechRecognitionService: creating VoiceActivityDetector...');
-    _vad = sherpa.VoiceActivityDetector(
+    return sherpa.VoiceActivityDetector(
       config: vadConfig,
       bufferSizeInSeconds: 60,
     );
-    debugPrint('SpeechRecognitionService: initialized successfully');
-
-    _isInitialized = true;
   }
 
   void acceptWaveform(Float32List samples) {
@@ -124,25 +139,27 @@ class SpeechRecognitionService {
   }
 
   void _decodeSegment(Float32List samples) {
-    if (_recognizer == null) return;
+    final result = _decodeSamples(samples, AppConstants.sampleRate);
+    if (result.text.isNotEmpty) {
+      _resultController.add(result);
+    }
+  }
+
+  RecognitionResult _decodeSamples(Float32List samples, int sampleRate) {
+    if (_recognizer == null) {
+      return const RecognitionResult(text: '', isFinal: true);
+    }
     final stream = _recognizer!.createStream();
-    stream.acceptWaveform(
-      samples: samples,
-      sampleRate: AppConstants.sampleRate,
-    );
+    stream.acceptWaveform(samples: samples, sampleRate: sampleRate);
     _recognizer!.decode(stream);
 
     final result = _recognizer!.getResult(stream);
-    if (result.text.isNotEmpty) {
-      _resultController.add(
-        RecognitionResult(
-          text: result.text,
-          isFinal: true,
-          detectedLanguage: result.lang,
-        ),
-      );
-    }
     stream.free();
+    return RecognitionResult(
+      text: result.text,
+      isFinal: true,
+      detectedLanguage: result.lang,
+    );
   }
 
   Future<String> transcribeFile(String filePath) async {
@@ -150,18 +167,111 @@ class SpeechRecognitionService {
       throw StateError('SpeechRecognitionService is not initialized');
     }
 
-    final stream = _recognizer!.createStream();
     final waveData = sherpa.readWave(filePath);
-    stream.acceptWaveform(
-      samples: waveData.samples,
-      sampleRate: waveData.sampleRate,
-    );
+    if (waveData.samples.isEmpty) return '';
 
-    _recognizer!.decode(stream);
-    final result = _recognizer!.getResult(stream);
-    stream.free();
+    final modelDir = _modelDir;
+    if (modelDir != null && waveData.sampleRate == AppConstants.sampleRate) {
+      sherpa.VoiceActivityDetector? batchVad;
+      try {
+        batchVad = _createVoiceActivityDetector(modelDir);
+        batchVad.acceptWaveform(waveData.samples);
+        batchVad.flush();
 
-    return result.text;
+        final segments = <String>[];
+        while (!batchVad.isEmpty()) {
+          final segment = batchVad.front();
+          batchVad.pop();
+          final result = _decodeSamples(segment.samples, waveData.sampleRate);
+          if (result.text.trim().isNotEmpty) {
+            segments.add(result.text);
+          }
+          // Yield to the event loop to keep the UI responsive
+          await Future<void>.delayed(Duration.zero);
+        }
+
+        final segmentedTranscript = combineTranscriptSegments(segments);
+
+        // セグメント認識結果が十分な長さあるなら、フル WAV を再度デコードする
+        // コストの高い処理をスキップする。VAD のセグメンテーションが頼りない
+        // 短い結果のときだけ全体デコードでフォールバックする。
+        if (_meaningfulLength(segmentedTranscript) >= _segmentTrustThreshold) {
+          return segmentedTranscript;
+        }
+
+        final fullTranscript = _decodeSamples(
+          waveData.samples,
+          waveData.sampleRate,
+        ).text;
+        return selectBetterTranscript(
+          existing: fullTranscript,
+          candidate: segmentedTranscript,
+        );
+      } finally {
+        batchVad?.free();
+      }
+    }
+
+    return _decodeSamples(waveData.samples, waveData.sampleRate).text;
+  }
+
+  static String selectBetterTranscript({
+    required String existing,
+    required String candidate,
+  }) {
+    final normalizedExisting = existing.trim();
+    final normalizedCandidate = candidate.trim();
+
+    if (normalizedExisting.isEmpty) return normalizedCandidate;
+    if (normalizedCandidate.isEmpty) return normalizedExisting;
+
+    final existingLength = _meaningfulLength(normalizedExisting);
+    final candidateLength = _meaningfulLength(normalizedCandidate);
+
+    // candidate が絶対的にも短い場合のみ existing を優先する。
+    // 3 文字以下のごく短い candidate（誤認識の可能性が高い）かつ
+    // existing がその 2 倍以上の長さあるときだけ existing を保持。
+    // これにより、ノイズで膨張した長い existing が一定の長さあるクリーンな
+    // candidate を不当に上書きするケースを防ぐ。
+    if (candidateLength < _noisyShortCandidateThreshold &&
+        candidateLength * 2 < existingLength) {
+      return normalizedExisting;
+    }
+
+    return normalizedCandidate;
+  }
+
+  static String combineTranscriptSegments(Iterable<String> segments) {
+    final buffer = StringBuffer();
+
+    for (final rawSegment in segments) {
+      final segment = rawSegment.trim();
+      if (segment.isEmpty) continue;
+
+      final current = buffer.toString();
+      if (current.isNotEmpty && _needsAsciiSeparator(current, segment)) {
+        buffer.write(' ');
+      }
+      buffer.write(segment);
+    }
+
+    return buffer.toString();
+  }
+
+  static int _meaningfulLength(String text) {
+    return text.replaceAll(RegExp(r'\s+'), '').length;
+  }
+
+  static bool _needsAsciiSeparator(String left, String right) {
+    if (left.isEmpty || right.isEmpty) return false;
+    return _isAsciiAlphaNumeric(left.codeUnitAt(left.length - 1)) &&
+        _isAsciiAlphaNumeric(right.codeUnitAt(0));
+  }
+
+  static bool _isAsciiAlphaNumeric(int codeUnit) {
+    return (codeUnit >= 0x30 && codeUnit <= 0x39) ||
+        (codeUnit >= 0x41 && codeUnit <= 0x5A) ||
+        (codeUnit >= 0x61 && codeUnit <= 0x7A);
   }
 
   void dispose() {
@@ -171,6 +281,7 @@ class SpeechRecognitionService {
     _vad?.free();
     _recognizer = null;
     _vad = null;
+    _modelDir = null;
     _isInitialized = false;
   }
 }

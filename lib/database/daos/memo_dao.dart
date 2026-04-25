@@ -45,7 +45,7 @@ class MemoDao extends DatabaseAccessor<AppDatabase> with _$MemoDaoMixin {
         .get();
   }
 
-  Future<void> updateTranscript(int id, String newTranscript) {
+  Future<int> updateTranscript(int id, String newTranscript) {
     return (update(memos)..where((m) => m.id.equals(id))).write(
       MemosCompanion(
         transcript: Value(newTranscript),
