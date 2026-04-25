@@ -177,6 +177,8 @@ class SpeechRecognitionService {
           if (result.text.trim().isNotEmpty) {
             segments.add(result.text);
           }
+          // Yield to the event loop to keep the UI responsive
+          await Future<void>.delayed(Duration.zero);
         }
 
         final segmentedTranscript = combineTranscriptSegments(segments);
