@@ -94,3 +94,8 @@ fvm flutter build apk --release        # Android ビルド
 - sherpa_onnx 関連の実装をするとき → 必ず `sherpa-onnx-flutter-guide.md` を読んでから着手すること
 - 実装が完了したら → 品質ゲートの全コマンドを実行して Pass を確認すること
 - iOS にインストールする際 → `fvm flutter clean` 後にビルドすること（コード署名破損の回避）
+
+## 過去の指摘
+
+- 録音はバックグラウンド・スリープ中も止めない。アプリが前面にないと録音できないのは不便だと明言された。iOSはBackground Audio、AndroidはForeground Serviceを前提に設計する。
+- コミットメッセージにAIの名前（Claude、Co-Authored-By行など）を入れない。ユーザーが明示的に指示した。コミット前にanalyze/format/test/buildをすべて通す。
