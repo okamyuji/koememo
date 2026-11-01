@@ -18,7 +18,7 @@
 
 | カテゴリ | 技術 |
 |---------|------|
-| フレームワーク | Flutter 3.41.5 (fvm) / Dart ^3.11.0 |
+| フレームワーク | Flutter 3.47.9 (fvm) / Dart ^3.11.0 |
 | 状態管理 | Riverpod 3系 (flutter_riverpod + riverpod_generator) |
 | ルーティング | GoRouter |
 | ローカルDB | drift (SQLite) |

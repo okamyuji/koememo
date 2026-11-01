@@ -4,7 +4,7 @@
 
 ## IMPORTANT: fvm 必須
 
-- Flutter SDK は fvm 3.41.5 でバージョン固定
+- Flutter SDK は fvm 3.47.9 でバージョン固定
 - `flutter`, `dart` コマンドは **全て** `fvm flutter`, `fvm dart` 経由で実行すること
 - analyze, format, test, build も全て fvm 経由: `fvm flutter analyze`, `fvm dart format` 等
 
@@ -31,7 +31,7 @@ fvm flutter build apk                        # Android ビルド成功
 
 ## 技術スタック
 
-- Flutter 3.41.5 (fvm) / Dart ^3.11.0
+- Flutter 3.47.9 (fvm) / Dart ^3.11.0
 - 状態管理: Riverpod 3系 + riverpod_generator
 - ルーティング: GoRouter（手書き `Provider<GoRouter>`、`@Riverpod` ではない）
 - 音声認識: sherpa_onnx ^1.12.0 (SenseVoice int8 + Silero VAD)
