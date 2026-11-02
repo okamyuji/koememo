@@ -54,7 +54,6 @@ app.*.map.json
 **/macos/Flutter/Flutter-Release.xcconfig
 **/macos/Podfile
 **/ios/Podfile.lock
-pubspec.lock
 
 # Superpowers brainstorm
 .superpowers/
