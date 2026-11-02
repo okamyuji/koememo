@@ -145,12 +145,13 @@ android {
 #### iOS: `ios/Podfile`
 
 ```ruby
-platform :ios, '13.0'  # sherpa_onnx の最小要件
+# sherpa_onnx の最小要件は iOS 13.0。Flutter 3.47 の Xcode が 15.0 未満を組めないので、このプロジェクトは 15.0 にする
+platform :ios, '15.0'
 
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
     end
   end
 end
