@@ -1,7 +1,8 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+
 import 'package:koememo/features/memo_detail/memo_detail_controller.dart';
 import 'package:koememo/services/audio_playback_service.dart';
+import 'package:material_ui/material_ui.dart';
 
 class AudioPlayerBar extends StatefulWidget {
   final String filePath;
