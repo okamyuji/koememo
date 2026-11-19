@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// State パターンによる認証ライフサイクル管理。
 /// 各状態が onResumed / onPaused の振る舞いを決定する。

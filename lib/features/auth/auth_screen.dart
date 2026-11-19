@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:koememo/core/router.dart';
 import 'package:koememo/services/auth_service.dart';
+import 'package:material_ui/material_ui.dart';
 
 class AuthScreen extends ConsumerStatefulWidget {
   const AuthScreen({super.key});

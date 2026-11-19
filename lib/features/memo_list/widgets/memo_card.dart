@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:koememo/database/app_database.dart';
+import 'package:material_ui/material_ui.dart';
 
 class MemoCard extends StatelessWidget {
   final Memo memo;

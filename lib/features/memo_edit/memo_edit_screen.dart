@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:koememo/features/memo_detail/memo_detail_controller.dart';
+import 'package:material_ui/material_ui.dart';
 
 class MemoEditScreen extends ConsumerStatefulWidget {
   final int memoId;

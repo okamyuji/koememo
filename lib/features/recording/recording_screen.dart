@@ -1,10 +1,10 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:koememo/features/recording/recording_controller.dart';
 import 'package:koememo/features/recording/widgets/live_transcript_view.dart';
 import 'package:koememo/features/recording/widgets/waveform_indicator.dart';
 import 'package:koememo/models/recording_state.dart';
+import 'package:material_ui/material_ui.dart';
 
 class RecordingScreen extends ConsumerWidget {
   const RecordingScreen({super.key});

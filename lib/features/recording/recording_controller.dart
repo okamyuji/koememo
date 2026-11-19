@@ -1,7 +1,7 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:koememo/core/router.dart';
 import 'package:koememo/database/daos/memo_dao.dart';
 import 'package:koememo/features/memo_list/memo_list_controller.dart';
@@ -10,6 +10,7 @@ import 'package:koememo/models/recording_state.dart';
 import 'package:koememo/services/audio_recording_service.dart';
 import 'package:koememo/services/database_service.dart';
 import 'package:koememo/services/speech_recognition_service.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'recording_controller.g.dart';
 

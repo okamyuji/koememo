@@ -1,9 +1,9 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:koememo/core/auth_lifecycle.dart';
 import 'package:koememo/core/router.dart';
 import 'package:koememo/core/theme.dart';
 import 'package:koememo/features/settings/settings_controller.dart';
+import 'package:material_ui/material_ui.dart';
 
 class KoememoApp extends ConsumerStatefulWidget {
   const KoememoApp({super.key});
